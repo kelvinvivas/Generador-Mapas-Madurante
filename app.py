@@ -1,109 +1,68 @@
-import streamlit as st
+import glob
+import io
+import os
+import tempfile
+import zipfile
+
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from io import BytesIO
-import zipfile
-import tempfile
-import glob
-import os
-
+import streamlit as st
 
 # ============================================================
 # CONFIGURACIÓN GENERAL
 # ============================================================
 
 st.set_page_config(
-    page_title="Generador de Bloques",
-    page_icon="🗺️",
-    layout="wide"
+    page_title="Generador Dinámico de Bloques", page_icon="🗺️", layout="wide"
 )
 
-
-# ============================================================
-# ESTILOS CSS
-# ============================================================
-
-st.markdown("""
-<style>
-
-.main {
-    background-color: #f7f9f7;
-}
-
-h1 {
-    color: #1B5E20;
-}
-
-div[data-testid="stMetric"] {
-    background-color: white;
-    border: 1px solid #e0e0e0;
-    padding: 15px;
-    border-radius: 10px;
-}
-
-</style>
-""", unsafe_allow_html=True)
+# Paleta de colores predefinida para bloques dinámicos
+PALETA_COLORES = [
+    {"nombre": "Amarillo", "hex": "#FFD700"},
+    {"nombre": "Verde", "hex": "#32CD32"},
+    {"nombre": "Azul", "hex": "#1E90FF"},
+    {"nombre": "Naranja", "hex": "#FF8C00"},
+    {"nombre": "Púrpura", "hex": "#9370DB"},
+    {"nombre": "Rojo", "hex": "#FF4500"},
+    {"nombre": "Turquesa", "hex": "#00CED1"},
+    {"nombre": "Rosa", "hex": "#FF69B4"},
+]
 
 
 # ============================================================
 # CARGAR SHAPEFILE
 # ============================================================
 
+
 @st.cache_data
 def cargar_datos():
-
     ruta_zip = "data/SHAPE_FILE_OFICIAL_ZAFRA_2627.zip"
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    if not os.path.exists(ruta_zip):
+        raise FileNotFoundError(f"No se encontró el archivo ZIP en {ruta_zip}")
 
-        # Extraer archivos
+    with tempfile.TemporaryDirectory() as temp_dir:
         with zipfile.ZipFile(ruta_zip, "r") as zip_ref:
             zip_ref.extractall(temp_dir)
 
-        # Buscar archivo SHP
         archivos_shp = glob.glob(
-            os.path.join(
-                temp_dir,
-                "**",
-                "*.shp"
-            ),
-            recursive=True
+            os.path.join(temp_dir, "**", "*.shp"), recursive=True
         )
 
         if not archivos_shp:
-            raise FileNotFoundError(
-                "No se encontró archivo .shp"
-            )
+            raise FileNotFoundError("No se encontró archivo .shp")
 
-        # Leer shapefile
-        gdf = gpd.read_file(
-            archivos_shp[0]
-        )
+        return gpd.read_file(archivos_shp[0])
 
-        return gdf
-
-
-# ============================================================
-# CARGAR INFORMACIÓN
-# ============================================================
 
 try:
-
     gdf = cargar_datos()
-
 except Exception as e:
-
     st.error("Error cargando la base geográfica")
-
     st.exception(e)
-
     st.stop()
 
-
-# ============================================================
-# COLUMNAS DEL SHAPEFILE
-# ============================================================
 
 COL_FINCA = "FINCA"
 COL_CODIGO = "COD_CAM"
@@ -115,32 +74,9 @@ COL_AREA = "HA"
 # ENCABEZADO
 # ============================================================
 
-st.title("🗺️ Generador de Mapas por Bloques")
-
-st.markdown("""
-Seleccione una finca y agrupe sus campos en bloques
-para generar automáticamente un mapa en PDF.
-""")
-
+st.title("🗺️ Generador de Mapas por Bloques Dinámicos")
+st.markdown("Seleccione una finca y agregue tantos bloques como necesite.")
 st.divider()
-
-
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-st.sidebar.header("⚙️ Información")
-
-st.sidebar.success(
-    f"Base cargada: {len(gdf):,} campos"
-)
-
-st.sidebar.write("Columnas utilizadas:")
-
-st.sidebar.write("• FINCA")
-st.sidebar.write("• COD_CAM")
-st.sidebar.write("• CAMPO")
-st.sidebar.write("• HA")
 
 
 # ============================================================
@@ -148,34 +84,11 @@ st.sidebar.write("• HA")
 # ============================================================
 
 st.header("1️⃣ Selección de Finca")
+fincas = sorted(gdf[COL_FINCA].dropna().astype(str).unique())
+finca_seleccionada = st.selectbox("Seleccione la finca", fincas)
 
-fincas = sorted(
-    gdf[COL_FINCA]
-    .dropna()
-    .astype(str)
-    .unique()
-)
-
-finca_seleccionada = st.selectbox(
-    "Seleccione la finca",
-    fincas
-)
-
-
-# ============================================================
-# FILTRAR FINCA
-# ============================================================
-
-finca_gdf = gdf[
-    gdf[COL_FINCA].astype(str)
-    == finca_seleccionada
-].copy()
-
-
-# ============================================================
-# CONVERTIR CÓDIGO A TEXTO
-# ============================================================
-
+# Filtrar geodatos para la finca elegida
+finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
 finca_gdf["CODIGO_STR"] = (
     finca_gdf[COL_CODIGO]
     .fillna("")
@@ -185,70 +98,66 @@ finca_gdf["CODIGO_STR"] = (
 
 
 # ============================================================
-# LISTA DE CAMPOS
-# ============================================================
-
-campos_opciones = (
-    finca_gdf
-    .sort_values("CODIGO_STR")["CODIGO_STR"]
-    .unique()
-    .tolist()
-)
-
-
-# ============================================================
-# BLOQUES
+# GESTIÓN DE BLOQUES DINÁMICOS
 # ============================================================
 
 st.header("2️⃣ Organización de Bloques")
 
-col1, col2 = st.columns(2)
+# Inicializar cantidad de bloques en Session State si no existe
+if "num_bloques" not in st.session_state:
+    st.session_state.num_bloques = 2
+
+col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+with col_btn1:
+    if st.button("➕ Agregar Bloque"):
+        if st.session_state.num_bloques < len(PALETA_COLORES):
+            st.session_state.num_bloques += 1
+        else:
+            st.warning("Límite máximo de bloques alcanzado.")
+
+with col_btn2:
+    if st.button("➖ Quitar Bloque"):
+        if st.session_state.num_bloques > 1:
+            st.session_state.num_bloques -= 1
+
+st.write(f"**Bloques configurados:** {st.session_state.num_bloques}")
 
 
-# ============================================================
-# BLOQUE 1
-# ============================================================
-
-with col1:
-
-    st.markdown("## 🟨 Bloque 1")
-
-    bloque1 = st.multiselect(
-        "Seleccione los códigos de campo",
-        campos_opciones,
-        key="bloque_1"
-    )
-
-
-# ============================================================
-# BLOQUE 2
-# ============================================================
-
-with col2:
-
-    st.markdown("## 🟩 Bloque 2")
-
-    bloque2 = st.multiselect(
-        "Seleccione los códigos de campo",
-        campos_opciones,
-        key="bloque_2"
-    )
-
-
-# ============================================================
-# VALIDAR DUPLICADOS
-# ============================================================
-
-duplicados = set(bloque1).intersection(
-    set(bloque2)
+# Lista para mantener campos que aún no han sido seleccionados
+opciones_disponibles = (
+    finca_gdf.sort_values("CODIGO_STR")["CODIGO_STR"].unique().tolist()
 )
 
-if duplicados:
+bloques_seleccionados = {}
+cols_por_fila = 2
+columnas_gui = st.columns(cols_por_fila)
 
-    st.warning(
-        "⚠️ Los siguientes campos están repetidos: "
-        + ", ".join(duplicados)
-    )
+# Renderizar selectores según la cantidad dinámica de bloques
+for i in range(st.session_state.num_bloques):
+    col_idx = i % cols_por_fila
+    color_info = PALETA_COLORES[i % len(PALETA_COLORES)]
+
+    with columnas_gui[col_idx]:
+        st.subheader(f"Bloque {i+1}")
+
+        # Selector multinivel
+        lotes_elegidos = st.multiselect(
+            f"Campos Bloque {i+1} ({color_info['nombre']}):",
+            opciones_disponibles,
+            key=f"bloque_dinamico_{i}",
+        )
+
+        # Guardar lotes y color correspondiente
+        bloques_seleccionados[f"Bloque {i+1}"] = {
+            "lotes": lotes_elegidos,
+            "color": color_info["hex"],
+            "nombre_color": color_info["nombre"],
+        }
+
+        # Remover lotes seleccionados para que no aparezcan en los siguientes bloques
+        opciones_disponibles = [
+            c for c in opciones_disponibles if c not in lotes_elegidos
+        ]
 
 
 # ============================================================
@@ -256,254 +165,137 @@ if duplicados:
 # ============================================================
 
 st.divider()
-
 generar = st.button(
-    "🗺️ GENERAR MAPA",
-    use_container_width=True,
-    type="primary"
+    "🗺️ GENERAR MAPA Y RESUMEN", use_container_width=True, type="primary"
 )
 
 
 # ============================================================
-# GENERACIÓN DEL MAPA
+# GENERACIÓN DEL MAPA Y REPORTES
 # ============================================================
 
 if generar:
 
-    if duplicados:
+    fig, ax = plt.subplots(figsize=(12, 9))
 
-        st.error(
-            "Corrija los campos duplicados antes de generar el mapa."
-        )
-
-        st.stop()
-
-
-    # ========================================================
-    # FILTRAR BLOQUES
-    # ========================================================
-
-    gdf_bloque1 = finca_gdf[
-        finca_gdf["CODIGO_STR"].isin(bloque1)
-    ]
-
-    gdf_bloque2 = finca_gdf[
-        finca_gdf["CODIGO_STR"].isin(bloque2)
-    ]
-
-
-    # ========================================================
-    # CREAR FIGURA
-    # ========================================================
-
-    fig, ax = plt.subplots(
-        figsize=(14, 10)
-    )
-
-
-    # ========================================================
-    # TODOS LOS CAMPOS DE LA FINCA
-    # ========================================================
-
+    # Capa base (Gris Claro)
     finca_gdf.plot(
-        ax=ax,
-        facecolor="#F5F5F5",
-        edgecolor="black",
-        linewidth=0.7
+        ax=ax, facecolor="#F5F5F5", edgecolor="black", linewidth=0.7
     )
 
+    leyenda_handles = []
+    resumen_areas = []
 
-    # ========================================================
-    # BLOQUE 1 - AMARILLO
-    # ========================================================
+    # Pintar cada bloque dinámico
+    for nombre_bloque, datos in bloques_seleccionados.items():
+        lotes = datos["lotes"]
+        color_hex = datos["color"]
 
-    if not gdf_bloque1.empty:
+        if lotes:
+            sub_gdf = finca_gdf[finca_gdf["CODIGO_STR"].isin(lotes)]
 
-        gdf_bloque1.plot(
-            ax=ax,
-            facecolor="#FFD700",
+            # Pintar polígonos del bloque
+            sub_gdf.plot(
+                ax=ax, facecolor=color_hex, edgecolor="black", linewidth=1.2
+            )
+
+            # Calcular hectáreas del bloque
+            area_b = sub_gdf[COL_AREA].fillna(0).sum()
+            resumen_areas.append(
+                {
+                    "Bloque": nombre_bloque,
+                    "Campos": len(lotes),
+                    "Área (ha)": area_b,
+                }
+            )
+
+            # Elemento para leyenda
+            leyenda_handles.append(
+                Patch(
+                    facecolor=color_hex,
+                    edgecolor="black",
+                    label=f"{nombre_bloque} ({len(lotes)} campos)",
+                )
+            )
+
+    # Añadir capa base a la leyenda
+    leyenda_handles.append(
+        Patch(
+            facecolor="#F5F5F5",
             edgecolor="black",
-            linewidth=1.2
+            label="Sin asignar / Otros",
         )
+    )
 
-
-    # ========================================================
-    # BLOQUE 2 - VERDE
-    # ========================================================
-
-    if not gdf_bloque2.empty:
-
-        gdf_bloque2.plot(
-            ax=ax,
-            facecolor="#32CD32",
-            edgecolor="black",
-            linewidth=1.2
-        )
-
-
-    # ========================================================
-    # ETIQUETAS DE LOS CAMPOS
-    # ========================================================
-
+    # Añadir etiquetas con el código del campo
     for _, row in finca_gdf.iterrows():
-
         punto = row.geometry.representative_point()
-
         codigo = row["CODIGO_STR"]
-
         ax.annotate(
             codigo,
             xy=(punto.x, punto.y),
             ha="center",
             va="center",
             fontsize=7,
-            fontweight="bold"
+            fontweight="bold",
         )
-
-
-    # ========================================================
-    # TÍTULO DEL MAPA
-    # ========================================================
 
     ax.set_title(
-        f"MAPA DE BLOQUES\nFINCA: {finca_seleccionada}",
-        fontsize=18,
+        f"MAPA DE BLOQUES - FINCA: {finca_seleccionada}",
+        fontsize=16,
         fontweight="bold",
-        pad=20
+        pad=15,
     )
-
-
-    # ========================================================
-    # LEYENDA
-    # ========================================================
-
-    leyenda = [
-
-        Patch(
-            facecolor="#FFD700",
-            edgecolor="black",
-            label=f"Bloque 1 ({len(bloque1)} campos)"
-        ),
-
-        Patch(
-            facecolor="#32CD32",
-            edgecolor="black",
-            label=f"Bloque 2 ({len(bloque2)} campos)"
-        ),
-
-        Patch(
-            facecolor="#F5F5F5",
-            edgecolor="black",
-            label="Otros campos"
-        )
-
-    ]
-
     ax.legend(
-        handles=leyenda,
+        handles=leyenda_handles,
         loc="lower right",
         frameon=True,
-        fontsize=10
+        fontsize="small",
     )
-
-
-    # ========================================================
-    # OCULTAR EJES
-    # ========================================================
-
     ax.axis("off")
 
-
     # ========================================================
-    # MOSTRAR MAPA
+    # VISTA PREVIA
     # ========================================================
 
     st.header("3️⃣ Vista previa")
-
-    st.pyplot(
-        fig,
-        use_container_width=True
-    )
-
+    st.pyplot(fig, use_column_width=True)
 
     # ========================================================
-    # CALCULAR ÁREAS
-    # ========================================================
-
-    area_total = (
-        finca_gdf[COL_AREA]
-        .fillna(0)
-        .sum()
-    )
-
-    area_bloque1 = (
-        gdf_bloque1[COL_AREA]
-        .fillna(0)
-        .sum()
-    )
-
-    area_bloque2 = (
-        gdf_bloque2[COL_AREA]
-        .fillna(0)
-        .sum()
-    )
-
-
-    # ========================================================
-    # MÉTRICAS
+    # MÉTRICAS DINÁMICAS
     # ========================================================
 
     st.header("4️⃣ Resumen de Áreas")
+    area_total_finca = finca_gdf[COL_AREA].fillna(0).sum()
 
-    m1, m2, m3, m4 = st.columns(4)
+    cols_metricas = st.columns(len(resumen_areas) + 1)
+    cols_metricas[0].metric("Área Finca", f"{area_total_finca:,.2f} ha")
 
-    m1.metric(
-        "Área Finca",
-        f"{area_total:,.2f} ha"
+    area_total_seleccionada = 0
+    for idx, item in enumerate(resumen_areas):
+        cols_metricas[idx + 1].metric(
+            item["Bloque"], f"{item['Área (ha)']:,.2f} ha"
+        )
+        area_total_seleccionada += item["Área (ha)"]
+
+    st.info(
+        f"**Área Total Seleccionada:** {area_total_seleccionada:,.2f} ha de {area_total_finca:,.2f} ha"
     )
-
-    m2.metric(
-        "🟨 Bloque 1",
-        f"{area_bloque1:,.2f} ha"
-    )
-
-    m3.metric(
-        "🟩 Bloque 2",
-        f"{area_bloque2:,.2f} ha"
-    )
-
-    m4.metric(
-        "Área Seleccionada",
-        f"{area_bloque1 + area_bloque2:,.2f} ha"
-    )
-
 
     # ========================================================
-    # GENERAR PDF
+    # GENERAR PDF Y DESCARGA
     # ========================================================
 
-    pdf_buffer = BytesIO()
-
-    fig.savefig(
-        pdf_buffer,
-        format="pdf",
-        bbox_inches="tight",
-        dpi=300
-    )
-
+    pdf_buffer = io.BytesIO()
+    fig.savefig(pdf_buffer, format="pdf", bbox_inches="tight", dpi=300)
     pdf_buffer.seek(0)
-
-
-    # ========================================================
-    # BOTÓN DESCARGAR PDF
-    # ========================================================
+    plt.close(fig)
 
     st.divider()
-
     st.download_button(
         label="📥 DESCARGAR MAPA EN PDF",
         data=pdf_buffer,
         file_name=f"Mapa_Bloques_{finca_seleccionada}.pdf",
         mime="application/pdf",
-        use_container_width=True
+        use_container_width=True,
     )
