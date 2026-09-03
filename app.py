@@ -80,6 +80,19 @@ st.divider()
 
 
 # ============================================================
+# SIDEBAR
+# ============================================================
+
+st.sidebar.header("⚙️ Información")
+st.sidebar.success(f"Base cargada: {len(gdf):,} campos")
+st.sidebar.write("Columnas utilizadas:")
+st.sidebar.write("• FINCA")
+st.sidebar.write("• COD_CAM")
+st.sidebar.write("• CAMPO")
+st.sidebar.write("• HA")
+
+
+# ============================================================
 # SELECCIONAR FINCA
 # ============================================================
 
@@ -259,7 +272,9 @@ if generar:
     # ========================================================
 
     st.header("3️⃣ Vista previa")
-    st.pyplot(fig, use_column_width=True)
+
+    # ✅ CORREGIDO: Usando use_container_width=True
+    st.pyplot(fig, use_container_width=True)
 
     # ========================================================
     # MÉTRICAS DINÁMICAS
@@ -268,19 +283,24 @@ if generar:
     st.header("4️⃣ Resumen de Áreas")
     area_total_finca = finca_gdf[COL_AREA].fillna(0).sum()
 
-    cols_metricas = st.columns(len(resumen_areas) + 1)
-    cols_metricas[0].metric("Área Finca", f"{area_total_finca:,.2f} ha")
+    if resumen_areas:
+        cols_metricas = st.columns(len(resumen_areas) + 1)
+        cols_metricas[0].metric("Área Finca", f"{area_total_finca:,.2f} ha")
 
-    area_total_seleccionada = 0
-    for idx, item in enumerate(resumen_areas):
-        cols_metricas[idx + 1].metric(
-            item["Bloque"], f"{item['Área (ha)']:,.2f} ha"
+        area_total_seleccionada = 0
+        for idx, item in enumerate(resumen_areas):
+            cols_metricas[idx + 1].metric(
+                item["Bloque"], f"{item['Área (ha)']:,.2f} ha"
+            )
+            area_total_seleccionada += item["Área (ha)"]
+
+        st.info(
+            f"**Área Total Seleccionada:** {area_total_seleccionada:,.2f} ha de {area_total_finca:,.2f} ha"
         )
-        area_total_seleccionada += item["Área (ha)"]
+    else:
 
-    st.info(
-        f"**Área Total Seleccionada:** {area_total_seleccionada:,.2f} ha de {area_total_finca:,.2f} ha"
-    )
+        st.metric("Área Finca", f"{area_total_finca:,.2f} ha")
+        st.warning("No has asignado lotes a ningún bloque.")
 
     # ========================================================
     # GENERAR PDF Y DESCARGA
@@ -289,6 +309,8 @@ if generar:
     pdf_buffer = io.BytesIO()
     fig.savefig(pdf_buffer, format="pdf", bbox_inches="tight", dpi=300)
     pdf_buffer.seek(0)
+
+    # Liberar memoria de matplotlib
     plt.close(fig)
 
     st.divider()
