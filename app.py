@@ -6,6 +6,7 @@ import zipfile
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Patch
 import streamlit as st
 
@@ -116,7 +117,6 @@ finca_gdf["CODIGO_STR"] = (
 
 st.header("2️⃣ Organización de Bloques")
 
-# Inicializar cantidad de bloques en Session State si no existe
 if "num_bloques" not in st.session_state:
     st.session_state.num_bloques = 2
 
@@ -135,8 +135,6 @@ with col_btn2:
 
 st.write(f"**Bloques configurados:** {st.session_state.num_bloques}")
 
-
-# Lista para mantener campos que aún no han sido seleccionados
 opciones_disponibles = (
     finca_gdf.sort_values("CODIGO_STR")["CODIGO_STR"].unique().tolist()
 )
@@ -145,7 +143,6 @@ bloques_seleccionados = {}
 cols_por_fila = 2
 columnas_gui = st.columns(cols_por_fila)
 
-# Renderizar selectores según la cantidad dinámica de bloques
 for i in range(st.session_state.num_bloques):
     col_idx = i % cols_por_fila
     color_info = PALETA_COLORES[i % len(PALETA_COLORES)]
@@ -153,21 +150,18 @@ for i in range(st.session_state.num_bloques):
     with columnas_gui[col_idx]:
         st.subheader(f"Bloque {i+1}")
 
-        # Selector multinivel
         lotes_elegidos = st.multiselect(
             f"Campos Bloque {i+1} ({color_info['nombre']}):",
             opciones_disponibles,
             key=f"bloque_dinamico_{i}",
         )
 
-        # Guardar lotes y color correspondiente
         bloques_seleccionados[f"Bloque {i+1}"] = {
             "lotes": lotes_elegidos,
             "color": color_info["hex"],
             "nombre_color": color_info["nombre"],
         }
 
-        # Remover lotes seleccionados para que no aparezcan en los siguientes bloques
         opciones_disponibles = [
             c for c in opciones_disponibles if c not in lotes_elegidos
         ]
@@ -200,23 +194,18 @@ if generar:
     resumen_areas = []
     lotes_en_bloques = set()
 
-    # Pintar cada bloque dinámico
     for nombre_bloque, datos in bloques_seleccionados.items():
         lotes = datos["lotes"]
         color_hex = datos["color"]
 
         if lotes:
-            # Guardar códigos de los lotes asignados para diferenciar sus etiquetas
             lotes_en_bloques.update(lotes)
-
             sub_gdf = finca_gdf[finca_gdf["CODIGO_STR"].isin(lotes)]
 
-            # Pintar polígonos del bloque
             sub_gdf.plot(
                 ax=ax, facecolor=color_hex, edgecolor="black", linewidth=1.2
             )
 
-            # Calcular hectáreas del bloque
             area_b = sub_gdf[COL_AREA].fillna(0).sum()
             resumen_areas.append(
                 {
@@ -226,7 +215,6 @@ if generar:
                 }
             )
 
-            # Elemento para leyenda
             leyenda_handles.append(
                 Patch(
                     facecolor=color_hex,
@@ -235,7 +223,6 @@ if generar:
                 )
             )
 
-    # Añadir capa base a la leyenda
     leyenda_handles.append(
         Patch(
             facecolor="#F5F5F5",
@@ -245,24 +232,47 @@ if generar:
     )
 
     # ========================================================
-    # ETIQUETAS PERSONALIZADAS POR CAMPO
+    # ESCALA ADAPTATIVA DE FUENTE SEGÚN EL ÁREA DEL POLÍGONO
     # ========================================================
+    areas_geometria = finca_gdf.geometry.area
+    min_geom_area = areas_geometria.min()
+    max_geom_area = areas_geometria.max()
+
     for _, row in finca_gdf.iterrows():
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
 
-        # Si el campo está asignado a un bloque, se muestra Nombre y Hectáreas
+        # Calcular tamaño dinámico de fuente (entre 3.5pt y 7pt)
+        geom_area = row.geometry.area
+        if max_geom_area > min_geom_area:
+            factor_escala = (np.sqrt(geom_area) - np.sqrt(min_geom_area)) / (
+                np.sqrt(max_geom_area) - np.sqrt(min_geom_area)
+            )
+        else:
+            factor_escala = 0.5
+
         if codigo in lotes_en_bloques:
+            # Tamaño adaptativo para campos seleccionados (min 4.5pt, max 7.5pt)
+            font_size = 4.5 + (factor_escala * 3.0)
+            
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
             area_ha = float(row[COL_AREA]) if row[COL_AREA] is not None else 0.0
             etiqueta = f"{nombre_campo}\n{area_ha:,.2f} ha"
             font_weight = "bold"
-            font_size = 7
+
+            # Caja de texto semi-transparente para garantizar contraste
+            box_style = dict(
+                boxstyle="round,pad=0.15",
+                fc="white",
+                ec="none",
+                alpha=0.65
+            )
         else:
-            # Si no está en ningún bloque, solo se muestra el código
+            # Tamaño pequeño para campos no asignados (min 3.5pt, max 5.5pt)
+            font_size = 3.5 + (factor_escala * 2.0)
             etiqueta = codigo
             font_weight = "normal"
-            font_size = 6
+            box_style = None
 
         ax.annotate(
             etiqueta,
@@ -271,7 +281,8 @@ if generar:
             va="center",
             fontsize=font_size,
             fontweight=font_weight,
-            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6) if codigo in lotes_en_bloques else None
+            bbox=box_style,
+            wrap=True
         )
 
     ax.set_title(
