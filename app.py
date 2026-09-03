@@ -198,6 +198,7 @@ if generar:
 
     leyenda_handles = []
     resumen_areas = []
+    lotes_en_bloques = set()
 
     # Pintar cada bloque dinámico
     for nombre_bloque, datos in bloques_seleccionados.items():
@@ -205,6 +206,9 @@ if generar:
         color_hex = datos["color"]
 
         if lotes:
+            # Guardar códigos de los lotes asignados para diferenciar sus etiquetas
+            lotes_en_bloques.update(lotes)
+
             sub_gdf = finca_gdf[finca_gdf["CODIGO_STR"].isin(lotes)]
 
             # Pintar polígonos del bloque
@@ -240,17 +244,34 @@ if generar:
         )
     )
 
-    # Añadir etiquetas con el código del campo
+    # ========================================================
+    # ETIQUETAS PERSONALIZADAS POR CAMPO
+    # ========================================================
     for _, row in finca_gdf.iterrows():
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
+
+        # Si el campo está asignado a un bloque, se muestra Nombre y Hectáreas
+        if codigo in lotes_en_bloques:
+            nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
+            area_ha = float(row[COL_AREA]) if row[COL_AREA] is not None else 0.0
+            etiqueta = f"{nombre_campo}\n{area_ha:,.2f} ha"
+            font_weight = "bold"
+            font_size = 7
+        else:
+            # Si no está en ningún bloque, solo se muestra el código
+            etiqueta = codigo
+            font_weight = "normal"
+            font_size = 6
+
         ax.annotate(
-            codigo,
+            etiqueta,
             xy=(punto.x, punto.y),
             ha="center",
             va="center",
-            fontsize=7,
-            fontweight="bold",
+            fontsize=font_size,
+            fontweight=font_weight,
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6) if codigo in lotes_en_bloques else None
         )
 
     ax.set_title(
@@ -272,8 +293,6 @@ if generar:
     # ========================================================
 
     st.header("3️⃣ Vista previa")
-
-    # ✅ CORREGIDO: Usando use_container_width=True
     st.pyplot(fig, use_container_width=True)
 
     # ========================================================
@@ -298,7 +317,6 @@ if generar:
             f"**Área Total Seleccionada:** {area_total_seleccionada:,.2f} ha de {area_total_finca:,.2f} ha"
         )
     else:
-
         st.metric("Área Finca", f"{area_total_finca:,.2f} ha")
         st.warning("No has asignado lotes a ningún bloque.")
 
