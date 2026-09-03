@@ -85,7 +85,7 @@ st.divider()
 # ============================================================
 
 st.sidebar.header("⚙️ Información")
-st.sidebar.success(f"Base cargada: {len(gdf):,} campos")
+st.sidebar.success(f"Base cargada: {len(gdf):,} registros")
 st.sidebar.write("Columnas utilizadas:")
 st.sidebar.write("• FINCA")
 st.sidebar.write("• COD_CAM")
@@ -103,6 +103,12 @@ finca_seleccionada = st.selectbox("Seleccione la finca", fincas)
 
 # Filtrar geodatos para la finca elegida
 finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
+
+# ------------------------------------------------------------
+# REMOVER DUPLICADOS (Conserva solo 1 valor por CAMPO y HA)
+# ------------------------------------------------------------
+finca_gdf = finca_gdf.drop_duplicates(subset=[COL_CAMPO, COL_AREA], keep="first")
+
 finca_gdf["CODIGO_STR"] = (
     finca_gdf[COL_CODIGO]
     .fillna("")
@@ -242,7 +248,7 @@ if generar:
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
 
-        # Calcular tamaño dinámico de fuente (entre 3.5pt y 7pt)
+        # Calcular tamaño dinámico de fuente proporcional al área del polígono
         geom_area = row.geometry.area
         if max_geom_area > min_geom_area:
             factor_escala = (np.sqrt(geom_area) - np.sqrt(min_geom_area)) / (
@@ -252,7 +258,7 @@ if generar:
             factor_escala = 0.5
 
         if codigo in lotes_en_bloques:
-            # Tamaño adaptativo para campos seleccionados (min 4.5pt, max 7.5pt)
+            # Fuente adaptativa para campos asignados a un bloque (min 4.5pt, max 7.5pt)
             font_size = 4.5 + (factor_escala * 3.0)
             
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
@@ -260,7 +266,6 @@ if generar:
             etiqueta = f"{nombre_campo}\n{area_ha:,.2f} ha"
             font_weight = "bold"
 
-            # Caja de texto semi-transparente para garantizar contraste
             box_style = dict(
                 boxstyle="round,pad=0.15",
                 fc="white",
@@ -268,7 +273,7 @@ if generar:
                 alpha=0.65
             )
         else:
-            # Tamaño pequeño para campos no asignados (min 3.5pt, max 5.5pt)
+            # Fuente adaptativa para campos no asignados (min 3.5pt, max 5.5pt)
             font_size = 3.5 + (factor_escala * 2.0)
             etiqueta = codigo
             font_weight = "normal"
