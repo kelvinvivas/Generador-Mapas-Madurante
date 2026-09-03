@@ -101,14 +101,8 @@ st.header("1️⃣ Selección de Finca")
 fincas = sorted(gdf[COL_FINCA].dropna().astype(str).unique())
 finca_seleccionada = st.selectbox("Seleccione la finca", fincas)
 
-# Filtrar geodatos para la finca elegida
+# Filtrar geodatos para la finca elegida (se conservan TODOS los polígonos)
 finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
-
-# ------------------------------------------------------------
-# REMOVER DUPLICADOS (Conserva solo 1 valor por CAMPO y HA)
-# ------------------------------------------------------------
-finca_gdf = finca_gdf.drop_duplicates(subset=[COL_CAMPO, COL_AREA], keep="first")
-
 finca_gdf["CODIGO_STR"] = (
     finca_gdf[COL_CODIGO]
     .fillna("")
@@ -191,7 +185,7 @@ if generar:
 
     fig, ax = plt.subplots(figsize=(12, 9))
 
-    # Capa base (Gris Claro)
+    # Capa base con TODOS los polígonos
     finca_gdf.plot(
         ax=ax, facecolor="#F5F5F5", edgecolor="black", linewidth=0.7
     )
@@ -208,6 +202,7 @@ if generar:
             lotes_en_bloques.update(lotes)
             sub_gdf = finca_gdf[finca_gdf["CODIGO_STR"].isin(lotes)]
 
+            # Dibuja todos los polígonos pertenecientes al bloque
             sub_gdf.plot(
                 ax=ax, facecolor=color_hex, edgecolor="black", linewidth=1.2
             )
@@ -238,18 +233,26 @@ if generar:
     )
 
     # ========================================================
-    # ESCALA ADAPTATIVA DE FUENTE SEGÚN EL ÁREA DEL POLÍGONO
+    # DEDUPLICACIÓN DE ETIQUETAS DE TEXTO
     # ========================================================
-    areas_geometria = finca_gdf.geometry.area
+    # Calculamos el área de cada geometría para colocar el texto en el polígono principal
+    finca_gdf["_GEOM_AREA"] = finca_gdf.geometry.area
+    
+    # Seleccionar únicamente 1 polígono representativo por campo (el de mayor área) para mostrar la etiqueta
+    etiquetas_gdf = finca_gdf.sort_values("_GEOM_AREA", ascending=False).drop_duplicates(
+        subset=[COL_CAMPO, COL_AREA], keep="first"
+    )
+
+    areas_geometria = finca_gdf["_GEOM_AREA"]
     min_geom_area = areas_geometria.min()
     max_geom_area = areas_geometria.max()
 
-    for _, row in finca_gdf.iterrows():
+    for _, row in etiquetas_gdf.iterrows():
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
 
         # Calcular tamaño dinámico de fuente proporcional al área del polígono
-        geom_area = row.geometry.area
+        geom_area = row["_GEOM_AREA"]
         if max_geom_area > min_geom_area:
             factor_escala = (np.sqrt(geom_area) - np.sqrt(min_geom_area)) / (
                 np.sqrt(max_geom_area) - np.sqrt(min_geom_area)
@@ -258,7 +261,7 @@ if generar:
             factor_escala = 0.5
 
         if codigo in lotes_en_bloques:
-            # Fuente adaptativa para campos asignados a un bloque (min 4.5pt, max 7.5pt)
+            # Tamaño adaptativo para campos asignados (min 4.5pt, max 7.5pt)
             font_size = 4.5 + (factor_escala * 3.0)
             
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
@@ -273,7 +276,7 @@ if generar:
                 alpha=0.65
             )
         else:
-            # Fuente adaptativa para campos no asignados (min 3.5pt, max 5.5pt)
+            # Tamaño adaptativo para campos no asignados (min 3.5pt, max 5.5pt)
             font_size = 3.5 + (factor_escala * 2.0)
             etiqueta = codigo
             font_weight = "normal"
