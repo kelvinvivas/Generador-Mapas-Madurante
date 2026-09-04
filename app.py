@@ -5,10 +5,15 @@ import tempfile
 import zipfile
 
 import geopandas as gpd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch
 import streamlit as st
+
+# Configuración para conservar la máxima calidad vectorial en el texto del PDF
+mpl.rcParams["pdf.fonttype"] = 42
+mpl.rcParams["ps.fonttype"] = 42
 
 # ============================================================
 # CONFIGURACIÓN GENERAL
@@ -101,7 +106,7 @@ st.header("1️⃣ Selección de Finca")
 fincas = sorted(gdf[COL_FINCA].dropna().astype(str).unique())
 finca_seleccionada = st.selectbox("Seleccione la finca", fincas)
 
-# Filtrar geodatos para la finca elegida (se conservan TODOS los polígonos)
+# Filtrar geodatos para la finca elegida
 finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
 finca_gdf["CODIGO_STR"] = (
     finca_gdf[COL_CODIGO]
@@ -202,7 +207,6 @@ if generar:
             lotes_en_bloques.update(lotes)
             sub_gdf = finca_gdf[finca_gdf["CODIGO_STR"].isin(lotes)]
 
-            # Dibuja todos los polígonos pertenecientes al bloque
             sub_gdf.plot(
                 ax=ax, facecolor=color_hex, edgecolor="black", linewidth=1.2
             )
@@ -233,12 +237,11 @@ if generar:
     )
 
     # ========================================================
-    # DEDUPLICACIÓN DE ETIQUETAS DE TEXTO
+    # DEDUPLICACIÓN Y FUENTE COMPACTA DE ALTA CALIDAD
     # ========================================================
-    # Calculamos el área de cada geometría para colocar el texto en el polígono principal
     finca_gdf["_GEOM_AREA"] = finca_gdf.geometry.area
     
-    # Seleccionar únicamente 1 polígono representativo por campo (el de mayor área) para mostrar la etiqueta
+    # Seleccionar 1 polígono representativo por campo para colocar el texto
     etiquetas_gdf = finca_gdf.sort_values("_GEOM_AREA", ascending=False).drop_duplicates(
         subset=[COL_CAMPO, COL_AREA], keep="first"
     )
@@ -251,7 +254,7 @@ if generar:
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
 
-        # Calcular tamaño dinámico de fuente proporcional al área del polígono
+        # Calcular tamaño de fuente compacto y proporcional al polígono
         geom_area = row["_GEOM_AREA"]
         if max_geom_area > min_geom_area:
             factor_escala = (np.sqrt(geom_area) - np.sqrt(min_geom_area)) / (
@@ -261,8 +264,8 @@ if generar:
             factor_escala = 0.5
 
         if codigo in lotes_en_bloques:
-            # Tamaño adaptativo para campos asignados (min 4.5pt, max 7.5pt)
-            font_size = 4.5 + (factor_escala * 3.0)
+            # Tamaño más pequeño para campos asignados (min 3.5pt, max 6.0pt)
+            font_size = 3.5 + (factor_escala * 2.5)
             
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
             area_ha = float(row[COL_AREA]) if row[COL_AREA] is not None else 0.0
@@ -270,14 +273,14 @@ if generar:
             font_weight = "bold"
 
             box_style = dict(
-                boxstyle="round,pad=0.15",
+                boxstyle="round,pad=0.12",
                 fc="white",
                 ec="none",
                 alpha=0.65
             )
         else:
-            # Tamaño adaptativo para campos no asignados (min 3.5pt, max 5.5pt)
-            font_size = 3.5 + (factor_escala * 2.0)
+            # Tamaño más pequeño para campos sin asignar (min 2.5pt, max 4.5pt)
+            font_size = 2.5 + (factor_escala * 2.0)
             etiqueta = codigo
             font_weight = "normal"
             box_style = None
@@ -347,7 +350,6 @@ if generar:
     fig.savefig(pdf_buffer, format="pdf", bbox_inches="tight", dpi=300)
     pdf_buffer.seek(0)
 
-    # Liberar memoria de matplotlib
     plt.close(fig)
 
     st.divider()
