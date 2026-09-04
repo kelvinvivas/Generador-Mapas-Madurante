@@ -237,25 +237,24 @@ if generar:
     )
 
     # ========================================================
-    # DEDUPLICACIÓN Y FUENTE COMPACTA DE ALTA CALIDAD
+    # UNIFICACIÓN DE GEOMETRÍAS Y UBICACIÓN CENTRADA DE ETIQUETAS
     # ========================================================
-    finca_gdf["_GEOM_AREA"] = finca_gdf.geometry.area
-    
-    # Seleccionar 1 polígono representativo por campo para colocar el texto
-    etiquetas_gdf = finca_gdf.sort_values("_GEOM_AREA", ascending=False).drop_duplicates(
-        subset=[COL_CAMPO, COL_AREA], keep="first"
-    )
+    # Agrupar (dissolve) las geometrías de cada campo en un único multipolígono por campo
+    campos_unificados = finca_gdf.dissolve(
+        by=["CODIGO_STR"],
+        aggfunc={COL_CAMPO: "first", COL_AREA: "sum"}
+    ).reset_index()
 
-    areas_geometria = finca_gdf["_GEOM_AREA"]
-    min_geom_area = areas_geometria.min()
-    max_geom_area = areas_geometria.max()
+    campos_unificados["_TOTAL_GEOM_AREA"] = campos_unificados.geometry.area
+    min_geom_area = campos_unificados["_TOTAL_GEOM_AREA"].min()
+    max_geom_area = campos_unificados["_TOTAL_GEOM_AREA"].max()
 
-    for _, row in etiquetas_gdf.iterrows():
+    for _, row in campos_unificados.iterrows():
+        # representative_point() o centroid para ubicar la etiqueta en el centro general del campo
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
 
-        # Calcular tamaño de fuente compacto y proporcional al polígono
-        geom_area = row["_GEOM_AREA"]
+        geom_area = row["_TOTAL_GEOM_AREA"]
         if max_geom_area > min_geom_area:
             factor_escala = (np.sqrt(geom_area) - np.sqrt(min_geom_area)) / (
                 np.sqrt(max_geom_area) - np.sqrt(min_geom_area)
@@ -264,7 +263,7 @@ if generar:
             factor_escala = 0.5
 
         if codigo in lotes_en_bloques:
-            # Tamaño más pequeño para campos asignados (min 3.5pt, max 6.0pt)
+            # Tamaño adaptativo para campos asignados (min 3.5pt, max 6.0pt)
             font_size = 3.5 + (factor_escala * 2.5)
             
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
@@ -279,7 +278,7 @@ if generar:
                 alpha=0.65
             )
         else:
-            # Tamaño más pequeño para campos sin asignar (min 2.5pt, max 4.5pt)
+            # Tamaño adaptativo para campos sin asignar (min 2.5pt, max 4.5pt)
             font_size = 2.5 + (factor_escala * 2.0)
             etiqueta = codigo
             font_weight = "normal"
