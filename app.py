@@ -28,6 +28,10 @@ PALETA_COLORES = [
     {"nombre": "Verde", "hex": "#32CD32"},
     {"nombre": "Rojo", "hex": "#FF0000"},
     {"nombre": "Azul", "hex": "#0000FF"},
+    {"nombre": "Menta", "hex": "#E0FFFF"},
+    {"nombre": "Rosa", "hex": "#FFC0CB"},
+    {"nombre": "Naranja", "hex": "#FF8C00"},
+    {"nombre": "Púrpura", "hex": "#9370DB"},
 ]
 
 
@@ -109,10 +113,29 @@ finca_gdf["LABEL_OPCION"] = np.where(
     finca_gdf["CAMPO_STR"].replace("", "Sin Nombre")
 )
 
+# ============================================================
+# GESTIÓN DE BLOQUES DINÁMICOS CON BOTONES
+# ============================================================
+
 st.subheader("🎨 Asignación de Bloques")
 
 if "num_bloques" not in st.session_state:
     st.session_state.num_bloques = 4
+
+col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+with col_btn1:
+    if st.button("➕ Agregar Bloque"):
+        if st.session_state.num_bloques < len(PALETA_COLORES):
+            st.session_state.num_bloques += 1
+        else:
+            st.warning("Límite máximo de bloques alcanzado.")
+
+with col_btn2:
+    if st.button("➖ Quitar Bloque"):
+        if st.session_state.num_bloques > 1:
+            st.session_state.num_bloques -= 1
+
+st.write(f"**Bloques configurados:** {st.session_state.num_bloques}")
 
 df_opciones = (
     finca_gdf[["CODIGO_STR", "LABEL_OPCION"]]
@@ -124,14 +147,18 @@ mapa_label_a_codigo = dict(zip(df_opciones["LABEL_OPCION"], df_opciones["CODIGO_
 opciones_disponibles = df_opciones["LABEL_OPCION"].tolist()
 
 bloques_seleccionados = {}
-cols_gui = st.columns(4)
+cols_por_fila = 2
+columnas_gui = st.columns(cols_por_fila)
 
 for i in range(st.session_state.num_bloques):
+    col_idx = i % cols_por_fila
     color_info = PALETA_COLORES[i % len(PALETA_COLORES)]
 
-    with cols_gui[i]:
+    with columnas_gui[col_idx]:
+        st.write(f"**Bloque {i+1}** ({color_info['nombre']})")
+
         labels_elegidos = st.multiselect(
-            f"Bloque {i+1} ({color_info['nombre']}):",
+            f"Seleccione campos para Bloque {i+1}:",
             opciones_disponibles,
             key=f"bloque_madronal_{i}",
         )
@@ -247,8 +274,7 @@ if generar:
         facecolor="white",
         edgecolor="black",
         fontsize=8,
-        title_fontsize=8.5,
-        box_spacing=0.8
+        title_fontsize=8.5
     )
     leg.get_title().set_fontweight('bold')
 
