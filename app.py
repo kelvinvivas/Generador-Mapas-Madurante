@@ -211,7 +211,13 @@ if generar:
                 ax=ax, facecolor=color_hex, edgecolor="black", linewidth=1.2
             )
 
-            area_b = sub_gdf[COL_AREA].fillna(0).sum()
+            # Tomar 1 solo valor de área por campo para evitar sumas duplicadas
+            area_b = (
+                sub_gdf.drop_duplicates(subset=["CODIGO_STR"])[COL_AREA]
+                .fillna(0)
+                .sum()
+            )
+
             resumen_areas.append(
                 {
                     "Bloque": nombre_bloque,
@@ -239,10 +245,10 @@ if generar:
     # ========================================================
     # UNIFICACIÓN DE GEOMETRÍAS Y UBICACIÓN CENTRADA DE ETIQUETAS
     # ========================================================
-    # Agrupar (dissolve) las geometrías de cada campo en un único multipolígono por campo
+    # Agrupar (dissolve) las geometrías tomando sólo el primer valor de HA (sin sumar)
     campos_unificados = finca_gdf.dissolve(
         by=["CODIGO_STR"],
-        aggfunc={COL_CAMPO: "first", COL_AREA: "sum"}
+        aggfunc={COL_CAMPO: "first", COL_AREA: "first"}
     ).reset_index()
 
     campos_unificados["_TOTAL_GEOM_AREA"] = campos_unificados.geometry.area
@@ -250,7 +256,6 @@ if generar:
     max_geom_area = campos_unificados["_TOTAL_GEOM_AREA"].max()
 
     for _, row in campos_unificados.iterrows():
-        # representative_point() o centroid para ubicar la etiqueta en el centro general del campo
         punto = row.geometry.representative_point()
         codigo = row["CODIGO_STR"]
 
@@ -321,7 +326,12 @@ if generar:
     # ========================================================
 
     st.header("4️⃣ Resumen de Áreas")
-    area_total_finca = finca_gdf[COL_AREA].fillna(0).sum()
+    # Área total tomando 1 valor por campo único
+    area_total_finca = (
+        finca_gdf.drop_duplicates(subset=["CODIGO_STR"])[COL_AREA]
+        .fillna(0)
+        .sum()
+    )
 
     if resumen_areas:
         cols_metricas = st.columns(len(resumen_areas) + 1)
