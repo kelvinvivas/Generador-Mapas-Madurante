@@ -80,8 +80,8 @@ COL_AREA = "HA"
 # ENCABEZADO
 # ============================================================
 
-st.title("🗺️ Generador de Mapas por Bloques Dinámicos")
-st.markdown("Seleccione una finca y agregue tantos bloques como necesite.")
+st.title("🗺️ Generador de Mapas Madurante")
+st.markdown("Seleccione una finca y agregue los bloques.")
 st.divider()
 
 
@@ -288,7 +288,7 @@ if generar:
 
         if codigo in lotes_en_bloques:
             # Tamaño adaptativo para campos asignados (min 3.5pt, max 6.0pt)
-            font_size = 3.5 + (factor_escala * 2.5)
+            font_size = 2.5 + (factor_escala * 2.5)
             
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" and str(row[COL_CAMPO]) != "" else codigo
             area_ha = float(row[COL_AREA]) if row[COL_AREA] is not None else 0.0
