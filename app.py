@@ -114,6 +114,14 @@ finca_gdf["CODIGO_STR"] = (
     .astype(str)
     .str.replace(".0", "", regex=False)
 )
+finca_gdf["CAMPO_STR"] = finca_gdf[COL_CAMPO].fillna("").astype(str)
+
+# Etiqueta amigable para la selección: "CAMPO (CÓDIGO)" o solo "CAMPO" si son idénticos
+finca_gdf["LABEL_OPCION"] = np.where(
+    (finca_gdf["CAMPO_STR"] != "") & (finca_gdf["CAMPO_STR"] != finca_gdf["CODIGO_STR"]),
+    finca_gdf["CAMPO_STR"] + " (" + finca_gdf["CODIGO_STR"] + ")",
+    finca_gdf["CAMPO_STR"].replace("", "Sin Nombre")
+)
 
 
 # ============================================================
@@ -140,9 +148,16 @@ with col_btn2:
 
 st.write(f"**Bloques configurados:** {st.session_state.num_bloques}")
 
-opciones_disponibles = (
-    finca_gdf.sort_values("CODIGO_STR")["CODIGO_STR"].unique().tolist()
+# Obtener catálogo de campos únicos para el selector (ordenados por nombre de campo)
+df_opciones = (
+    finca_gdf[["CODIGO_STR", "LABEL_OPCION"]]
+    .drop_duplicates(subset=["CODIGO_STR"])
+    .sort_values("LABEL_OPCION")
 )
+
+# Mapa para convertir de la etiqueta mostrada al código interno
+mapa_label_a_codigo = dict(zip(df_opciones["LABEL_OPCION"], df_opciones["CODIGO_STR"]))
+opciones_disponibles = df_opciones["LABEL_OPCION"].tolist()
 
 bloques_seleccionados = {}
 cols_por_fila = 2
@@ -155,20 +170,24 @@ for i in range(st.session_state.num_bloques):
     with columnas_gui[col_idx]:
         st.subheader(f"Bloque {i+1}")
 
-        lotes_elegidos = st.multiselect(
+        labels_elegidos = st.multiselect(
             f"Campos Bloque {i+1} ({color_info['nombre']}):",
             opciones_disponibles,
             key=f"bloque_dinamico_{i}",
         )
 
+        # Mapear los nombres/etiquetas seleccionadas a sus códigos correspondientes
+        codigos_elegidos = [mapa_label_a_codigo[lbl] for lbl in labels_elegidos]
+
         bloques_seleccionados[f"Bloque {i+1}"] = {
-            "lotes": lotes_elegidos,
+            "lotes": codigos_elegidos,
             "color": color_info["hex"],
             "nombre_color": color_info["nombre"],
         }
 
+        # Excluir de la lista las opciones ya seleccionadas
         opciones_disponibles = [
-            c for c in opciones_disponibles if c not in lotes_elegidos
+            lbl for lbl in opciones_disponibles if lbl not in labels_elegidos
         ]
 
 
@@ -271,7 +290,7 @@ if generar:
             # Tamaño adaptativo para campos asignados (min 3.5pt, max 6.0pt)
             font_size = 3.5 + (factor_escala * 2.5)
             
-            nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" else codigo
+            nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" and str(row[COL_CAMPO]) != "" else codigo
             area_ha = float(row[COL_AREA]) if row[COL_AREA] is not None else 0.0
             etiqueta = f"{nombre_campo}\n{area_ha:,.2f} ha"
             font_weight = "bold"
@@ -285,7 +304,7 @@ if generar:
         else:
             # Tamaño adaptativo para campos sin asignar (min 2.5pt, max 4.5pt)
             font_size = 2.5 + (factor_escala * 2.0)
-            etiqueta = codigo
+            etiqueta = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) != "nan" and str(row[COL_CAMPO]) != "" else codigo
             font_weight = "normal"
             box_style = None
 
