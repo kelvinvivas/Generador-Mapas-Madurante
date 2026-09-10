@@ -33,6 +33,7 @@ PALETA_BLOQUES = [
     {"bloque": "6", "nombre": "6 (Rosa)", "hex": "#FFB6C1"},
 ]
 
+
 # ============================================================
 # CARGAR BASE GEOGRÁFICA DE DATOS
 # ============================================================
@@ -61,6 +62,7 @@ def cargar_datos():
 
         return gpd.read_file(archivos_shp[0])
 
+
 try:
     gdf = cargar_datos()
 except Exception as e:
@@ -68,12 +70,14 @@ except Exception as e:
     st.exception(e)
     st.stop()
 
+
 # Mapeo dinámico de nombres de columnas presentes en la capa vectorial
 COL_FINCA = next((col for col in ["FINCA", "finca", "Finca", "NOM_FINCA"] if col in gdf.columns), gdf.columns[0])
 COL_CODIGO = next((col for col in ["COD_CAM", "CODIGO", "COD_CAMPO", "CODIGO_CAM"] if col in gdf.columns), gdf.columns[1])
 COL_CAMPO = next((col for col in ["CAMPO", "campo", "NOM_CAMPO", "NOMBRE_CAM"] if col in gdf.columns), gdf.columns[2])
 COL_AREA = next((col for col in ["HA", "HECTAREAS", "AREA_HA", "AREA", "ha"] if col in gdf.columns), None)
 COL_ZONA = next((col for col in ["ZONA", "zona", "Zona", "NUM_ZONA"] if col in gdf.columns), None)
+
 
 # ============================================================
 # INTERFAZ DE USUARIO (STREAMLIT)
@@ -132,6 +136,7 @@ if COL_AREA:
     finca_gdf["AREA_HA_CALC"] = finca_gdf[COL_AREA].fillna(0).astype(float)
 else:
     finca_gdf["AREA_HA_CALC"] = finca_gdf.geometry.area / 10000.0
+
 
 # ============================================================
 # ASIGNACIÓN DINÁMICA DE BLOQUES
@@ -194,6 +199,7 @@ for i in range(st.session_state.num_bloques):
 st.divider()
 generar = st.button("🗺️ GENERAR PLANO EN PDF", use_container_width=True, type="primary")
 
+
 # ============================================================
 # DIBUJO Y EXPORTACIÓN DEL MAPA
 # ============================================================
@@ -231,7 +237,7 @@ if generar:
             )
             area_total_bloques += area_b
 
-    # Leyenda estandarizada con las 6 categorías fijas y opción "No Aplica"
+    # LEYENDA SIEMPRE CON LOS 6 COLORES EXACTOS Y "No Aplica"
     leyenda_handles = [
         Patch(facecolor="white", edgecolor="black", label="No Aplica")
     ]
@@ -240,7 +246,7 @@ if generar:
             Patch(facecolor=b_item["hex"], edgecolor="black", label=b_item["bloque"])
         )
 
-    # Creación de etiquetas con negrita, decimales por punto y sombreado blanco
+    # Ubicación de Etiquetas (Negrita con punto decimal y sombreado blanco)
     campos_unificados = finca_gdf.dissolve(
         by=["CODIGO_STR"],
         aggfunc={COL_CAMPO: "first", "AREA_HA_CALC": "first"}
@@ -254,11 +260,11 @@ if generar:
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) not in ["nan", ""] else codigo
             area_ha = float(row["AREA_HA_CALC"]) if row["AREA_HA_CALC"] is not None else 0.0
 
-            # Formato numérico con punto decimal
+            # Formato con PUNTOS para los decimales
             area_str = f"{area_ha:.6f}"
             etiqueta = f"{area_str}\n{nombre_campo}"
 
-            # Cuadro de sombreado blanco (bbox) y texto en negrita
+            # Etiqueta con letra NEGRITA y sombreado/halo blanco
             ax.annotate(
                 etiqueta,
                 xy=(punto.x, punto.y),
@@ -275,17 +281,17 @@ if generar:
                 )
             )
 
-    # Título principal con la finca seleccionada y semana
+    # TÍTULO PRINCIPAL (Siempre en la esquina superior izquierda)
     titulo_completo = f"FINCA {finca_seleccionada.upper()}"
     if num_semana.strip():
         titulo_completo += f" {num_semana.strip().upper()}"
 
     ax.set_title(
         titulo_completo,
-        fontsize=17,
+        fontsize=16,
         fontweight="bold",
         loc="left",
-        pad=10
+        pad=12
     )
 
     # Rosa de los vientos
@@ -317,7 +323,7 @@ if generar:
     ])
 
     # ============================================================
-    # ESTRUCTURA DEL CAJETÍN INFERIOR
+    # ESTRUCTURA Y DATOS DEL CAJETÍN INFERIOR
     # ============================================================
     ax_box = fig.add_axes([0.02, 0.02, 0.96, 0.11])
     ax_box.axis("off")
@@ -332,23 +338,27 @@ if generar:
     ax_box.plot([0.45, 1.00], [0.2, 0.2], color="black", lw=1)
     ax_box.plot([0.75, 0.75], [0, 0.8], color="black", lw=1)
 
-    # Contenido del cajetín
+    # Logo / Identificación
     ax_box.text(0.09, 0.35, "MONTELIMAR", ha="center", va="center", fontsize=9, fontweight="bold", color="#388E3C")
+
+    # Finca Seleccionada por Defecto
     ax_box.text(0.315, 0.5, f"Finca: {finca_seleccionada}", ha="center", va="center", fontsize=8.5, fontweight="bold")
+
+    # Encabezado Departamento
     ax_box.text(0.725, 0.9, "Departamento Producción", ha="center", va="center", fontsize=8, fontweight="bold")
 
-    # Datos automatizados y predeterminados
+    # Filas con Datos Automatizados y Fijos
     ax_box.text(0.60, 0.7, f"{tipo_plano}", ha="center", va="center", fontsize=7.5, fontweight="bold")
     ax_box.text(0.875, 0.7, f"Zona: {zona_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
 
-    ax_box.text(0.60, 0.5, f"{zafra_txt}", ha="center", va="center", fontsize=7.5)
+    ax_box.text(0.60, 0.5, "Zafra 26-27", ha="center", va="center", fontsize=7.5)
     ax_box.text(0.875, 0.5, f"Uso: {uso_txt}", ha="center", va="center", fontsize=7.5)
 
-    ax_box.text(0.60, 0.3, f"Responsable: {responsable_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.60, 0.3, "Responsable: Ing.Kelvin Vivas", ha="center", va="center", fontsize=7.5, fontweight="bold")
     ax_box.text(0.875, 0.3, f"Area: {area_total_bloques:.2f}", ha="center", va="center", fontsize=7.5, fontweight="bold")
 
-    ax_box.text(0.60, 0.1, f"Jefe de Producción: {jefe_prod_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
-    ax_box.text(0.875, 0.1, f"Dibujo: {dibujo_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.60, 0.1, "Jefe de Producción: Ing.Igmar Hurtado", ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.875, 0.1, "Dibujo: Ing.Kelvin Vivas", ha="center", va="center", fontsize=7.5, fontweight="bold")
 
     st.pyplot(fig, use_container_width=True)
 
