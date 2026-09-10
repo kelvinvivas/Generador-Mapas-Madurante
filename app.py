@@ -6,6 +6,7 @@ import zipfile
 
 import geopandas as gpd
 import matplotlib as mpl
+import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch, Rectangle
@@ -207,10 +208,10 @@ generar = st.button("🗺️ GENERAR PLANO EN PDF", use_container_width=True, ty
 if generar:
     fig = plt.figure(figsize=(8.5, 11), dpi=300)
 
-    # Ventana espacial del mapa (se amplía espacio superior para el título fijo)
+    # Ventana espacial del mapa
     ax = fig.add_axes([0.04, 0.15, 0.92, 0.77])
 
-    # Capa base en blanco (Sin_Aplicar / No Aplica)
+    # Capa base en blanco
     finca_gdf.plot(
         ax=ax, facecolor="white", edgecolor="black", linewidth=0.8
     )
@@ -237,7 +238,7 @@ if generar:
             )
             area_total_bloques += area_b
 
-    # LEYENDA SIEMPRE CON LOS 6 COLORES EXACTOS Y "No Aplica"
+    # Leyenda estandarizada
     leyenda_handles = [
         Patch(facecolor="white", edgecolor="black", label="No Aplica")
     ]
@@ -246,7 +247,7 @@ if generar:
             Patch(facecolor=b_item["hex"], edgecolor="black", label=b_item["bloque"])
         )
 
-    # Ubicación de Etiquetas (Negrita con punto decimal y sombreado blanco)
+    # Ubicación de Etiquetas (Negrita con 2 decimales y halo contorneado solo a las letras)
     campos_unificados = finca_gdf.dissolve(
         by=["CODIGO_STR"],
         aggfunc={COL_CAMPO: "first", "AREA_HA_CALC": "first"}
@@ -260,30 +261,25 @@ if generar:
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) not in ["nan", ""] else codigo
             area_ha = float(row["AREA_HA_CALC"]) if row["AREA_HA_CALC"] is not None else 0.0
 
-            # Formato con PUNTOS para los decimales
-            area_str = f"{area_ha:.6f}"
+            # Formato con 2 decimales
+            area_str = f"{area_ha:.2f}"
             etiqueta = f"{area_str}\n{nombre_campo}"
 
-            # Etiqueta con letra NEGRITA y sombreado/halo blanco
-            ax.annotate(
+            # Texto contorneado con halo alrededor del trazo
+            txt = ax.text(
+                punto.x, punto.y,
                 etiqueta,
-                xy=(punto.x, punto.y),
                 ha="center",
                 va="center",
                 fontsize=8,
                 fontweight="bold",
-                linespacing=1.2,
-                bbox=dict(
-                    boxstyle="round,pad=0.2",
-                    fc="white",
-                    ec="none",
-                    alpha=0.85
-                )
+                linespacing=1.2
             )
+            txt.set_path_effects([
+                path_effects.withStroke(linewidth=3, foreground="white")
+            ])
 
-    # ============================================================
     # TÍTULO PRINCIPAL (Fijo en la parte superior izquierda de la página)
-    # ============================================================
     titulo_completo = f"FINCA {finca_seleccionada.upper()}"
     if num_semana.strip():
         titulo_completo += f" {num_semana.strip().upper()}"
