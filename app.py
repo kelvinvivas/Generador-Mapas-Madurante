@@ -11,32 +11,30 @@ import numpy as np
 from matplotlib.patches import Patch, Rectangle
 import streamlit as st
 
-# Configuración para conservar calidad vectorial en PDF
+# Configuración para conservar máxima calidad vectorial en exportación PDF
 mpl.rcParams["pdf.fonttype"] = 42
 mpl.rcParams["ps.fonttype"] = 42
 
 # ============================================================
-# CONFIGURACIÓN GENERAL
+# CONFIGURACIÓN GENERAL Y PALETA DE COLORES FIJA
 # ============================================================
 
 st.set_page_config(
     page_title="Generador de Planos - Montelimar", page_icon="🗺️", layout="wide"
 )
 
-PALETA_COLORES = [
-    {"nombre": "Amarillo", "hex": "#FFFF00"},
-    {"nombre": "Verde", "hex": "#32CD32"},
-    {"nombre": "Rojo", "hex": "#FF0000"},
-    {"nombre": "Azul", "hex": "#0000FF"},
-    {"nombre": "Menta", "hex": "#E0FFFF"},
-    {"nombre": "Rosa", "hex": "#FFC0CB"},
-    {"nombre": "Naranja", "hex": "#FF8C00"},
-    {"nombre": "Púrpura", "hex": "#9370DB"},
+# Paleta fija de 6 bloques
+PALETA_BLOQUES = [
+    {"bloque": "1", "nombre": "1 (Amarillo)", "hex": "#FFFF00"},
+    {"bloque": "2", "nombre": "2 (Verde)", "hex": "#32CD32"},
+    {"bloque": "3", "nombre": "3 (Rojo)", "hex": "#FF0000"},
+    {"bloque": "4", "nombre": "4 (Azul)", "hex": "#0000FF"},
+    {"bloque": "5", "nombre": "5 (Celeste)", "hex": "#87CEEB"},
+    {"bloque": "6", "nombre": "6 (Rosa)", "hex": "#FFB6C1"},
 ]
 
-
 # ============================================================
-# CARGAR SHAPEFILE
+# CARGAR BASE GEOGRÁFICA DE DATOS
 # ============================================================
 
 @st.cache_data
@@ -44,7 +42,11 @@ def cargar_datos():
     ruta_zip = "data/SHAPE_FILE_OFICIAL_ZAFRA_2627.zip"
 
     if not os.path.exists(ruta_zip):
-        raise FileNotFoundError(f"No se encontró el archivo ZIP en {ruta_zip}")
+        archivos_zip = glob.glob("*.zip") + glob.glob("data/*.zip")
+        if archivos_zip:
+            ruta_zip = archivos_zip[0]
+        else:
+            raise FileNotFoundError(f"No se encontró el archivo ZIP en {ruta_zip}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
         with zipfile.ZipFile(ruta_zip, "r") as zip_ref:
@@ -55,50 +57,62 @@ def cargar_datos():
         )
 
         if not archivos_shp:
-            raise FileNotFoundError("No se encontró archivo .shp")
+            raise FileNotFoundError("No se encontró ningún archivo .shp")
 
         return gpd.read_file(archivos_shp[0])
-
 
 try:
     gdf = cargar_datos()
 except Exception as e:
-    st.error("Error cargando la base geográfica")
+    st.error("Error al cargar la base geográfica")
     st.exception(e)
     st.stop()
 
-
-COL_FINCA = "FINCA"
-COL_CODIGO = "COD_CAM"
-COL_CAMPO = "CAMPO"
-COL_AREA = "HA"
-
+# Mapeo dinámico de nombres de columnas presentes en la capa vectorial
+COL_FINCA = next((col for col in ["FINCA", "finca", "Finca", "NOM_FINCA"] if col in gdf.columns), gdf.columns[0])
+COL_CODIGO = next((col for col in ["COD_CAM", "CODIGO", "COD_CAMPO", "CODIGO_CAM"] if col in gdf.columns), gdf.columns[1])
+COL_CAMPO = next((col for col in ["CAMPO", "campo", "NOM_CAMPO", "NOMBRE_CAM"] if col in gdf.columns), gdf.columns[2])
+COL_AREA = next((col for col in ["HA", "HECTAREAS", "AREA_HA", "AREA", "ha"] if col in gdf.columns), None)
+COL_ZONA = next((col for col in ["ZONA", "zona", "Zona", "NUM_ZONA"] if col in gdf.columns), None)
 
 # ============================================================
-# INTERFAZ Y CONFIGURACIÓN DEL PLANO
+# INTERFAZ DE USUARIO (STREAMLIT)
 # ============================================================
 
-st.title("🗺️ Generador de Planos Oficiales")
+st.title("🗺️ Generador de Planos Oficiales - Montelimar")
 st.divider()
 
-fincas = sorted(gdf[COL_FINCA].dropna().astype(str).unique())
-finca_seleccionada = st.selectbox("Seleccione Finca:", fincas)
+col_finca, col_semana = st.columns([2, 1])
+with col_finca:
+    fincas = sorted(gdf[COL_FINCA].dropna().astype(str).unique())
+    finca_seleccionada = st.selectbox("Seleccione Finca:", fincas)
+with col_semana:
+    num_semana = st.text_input("Número de Semana:", "SEMANA 03")
+
+# Filtrar geodatos por la finca seleccionada
+finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
+
+# Detección automática de la Zona según la finca seleccionada
+if COL_ZONA and not finca_gdf[COL_ZONA].dropna().empty:
+    zona_auto = str(finca_gdf[COL_ZONA].dropna().iloc[0]).replace(".0", "")
+else:
+    zona_auto = "2"
 
 st.subheader("📋 Datos del Cajetín")
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     tipo_plano = st.text_input("Plano / Tipo", "Plano Aplicación Madurante")
-    zafra_txt = st.text_input("Zafra", "Zafra 24-25")
+    zafra_txt = st.text_input("Zafra", "Zafra 26-27")
 with c2:
-    responsable_txt = st.text_input("Responsable", "Ing. Kelvin Vivas")
-    jefe_prod_txt = st.text_input("Jefe de Producción", "Ing. Igmar Hurtado")
+    responsable_txt = st.text_input("Responsable", "Ing.Kelvin Vivas")
+    jefe_prod_txt = st.text_input("Jefe de Producción", "Ing.Igmar Hurtado")
 with c3:
-    dibujo_txt = st.text_input("Dibujo", "Ing. Kelvin Vivas")
-    zona_txt = st.text_input("Zona", "1")
+    dibujo_txt = st.text_input("Dibujo", "Ing.Kelvin Vivas")
+    zona_txt = st.text_input("Zona (Automatizada)", zona_auto)
 with c4:
     uso_txt = st.text_input("Uso", "Comercial")
 
-finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
+# Preparación de etiquetas de selección
 finca_gdf["CODIGO_STR"] = (
     finca_gdf[COL_CODIGO]
     .fillna("")
@@ -113,29 +127,31 @@ finca_gdf["LABEL_OPCION"] = np.where(
     finca_gdf["CAMPO_STR"].replace("", "Sin Nombre")
 )
 
+# Cálculo preciso del área en hectáreas
+if COL_AREA:
+    finca_gdf["AREA_HA_CALC"] = finca_gdf[COL_AREA].fillna(0).astype(float)
+else:
+    finca_gdf["AREA_HA_CALC"] = finca_gdf.geometry.area / 10000.0
+
 # ============================================================
-# GESTIÓN DE BLOQUES DINÁMICOS CON BOTONES
+# ASIGNACIÓN DINÁMICA DE BLOQUES
 # ============================================================
 
 st.subheader("🎨 Asignación de Bloques")
 
 if "num_bloques" not in st.session_state:
-    st.session_state.num_bloques = 4
+    st.session_state.num_bloques = 1
 
 col_btn1, col_btn2, _ = st.columns([1, 1, 4])
 with col_btn1:
     if st.button("➕ Agregar Bloque"):
-        if st.session_state.num_bloques < len(PALETA_COLORES):
+        if st.session_state.num_bloques < len(PALETA_BLOQUES):
             st.session_state.num_bloques += 1
-        else:
-            st.warning("Límite máximo de bloques alcanzado.")
 
 with col_btn2:
     if st.button("➖ Quitar Bloque"):
         if st.session_state.num_bloques > 1:
             st.session_state.num_bloques -= 1
-
-st.write(f"**Bloques configurados:** {st.session_state.num_bloques}")
 
 df_opciones = (
     finca_gdf[["CODIGO_STR", "LABEL_OPCION"]]
@@ -152,7 +168,7 @@ columnas_gui = st.columns(cols_por_fila)
 
 for i in range(st.session_state.num_bloques):
     col_idx = i % cols_por_fila
-    color_info = PALETA_COLORES[i % len(PALETA_COLORES)]
+    color_info = PALETA_BLOQUES[i]
 
     with columnas_gui[col_idx]:
         st.write(f"**Bloque {i+1}** ({color_info['nombre']})")
@@ -160,7 +176,8 @@ for i in range(st.session_state.num_bloques):
         labels_elegidos = st.multiselect(
             f"Seleccione campos para Bloque {i+1}:",
             opciones_disponibles,
-            key=f"bloque_madronal_{i}",
+            default=opciones_disponibles if i == 0 else [],
+            key=f"bloque_sel_{i}",
         )
 
         codigos_elegidos = [mapa_label_a_codigo[lbl] for lbl in labels_elegidos]
@@ -175,31 +192,27 @@ for i in range(st.session_state.num_bloques):
         ]
 
 st.divider()
-generar = st.button("🗺️ GENERAR PLANO", use_container_width=True, type="primary")
+generar = st.button("🗺️ GENERAR PLANO EN PDF", use_container_width=True, type="primary")
 
 # ============================================================
-# RENDERIZADO DEL PLANO ESTILO MADROÑAL
+# DIBUJO Y EXPORTACIÓN DEL MAPA
 # ============================================================
 
 if generar:
     fig = plt.figure(figsize=(8.5, 11), dpi=300)
-    
-    # Eje Principal del Mapa
-    ax = fig.add_axes([0.04, 0.16, 0.92, 0.78])
-    
-    # Capa Base: Blanco con borde negro fino
+
+    # Ventana espacial del mapa
+    ax = fig.add_axes([0.04, 0.15, 0.92, 0.79])
+
+    # Capa base en blanco (Sin_Aplicar / No Aplica)
     finca_gdf.plot(
-        ax=ax, facecolor="white", edgecolor="black", linewidth=0.7
+        ax=ax, facecolor="white", edgecolor="black", linewidth=0.8
     )
 
-    leyenda_handles = [
-        Patch(facecolor="white", edgecolor="black", label="Sin_Aplicar")
-    ]
-    
     lotes_en_bloques = set()
     area_total_bloques = 0.0
 
-    # Dibujar Polígonos de Bloques Coloreados
+    # Representación de polígonos coloreados por bloque
     for num_bloque, datos in bloques_seleccionados.items():
         lotes = datos["lotes"]
         color_hex = datos["color"]
@@ -209,90 +222,107 @@ if generar:
             sub_gdf = finca_gdf[finca_gdf["CODIGO_STR"].isin(lotes)]
 
             sub_gdf.plot(
-                ax=ax, facecolor=color_hex, edgecolor="black", linewidth=1.0
+                ax=ax, facecolor=color_hex, edgecolor="black", linewidth=0.8
             )
 
             area_b = (
-                sub_gdf.drop_duplicates(subset=["CODIGO_STR"])[COL_AREA]
-                .fillna(0)
+                sub_gdf.drop_duplicates(subset=["CODIGO_STR"])["AREA_HA_CALC"]
                 .sum()
             )
             area_total_bloques += area_b
 
+    # Leyenda estandarizada con las 6 categorías fijas y opción "No Aplica"
+    leyenda_handles = [
+        Patch(facecolor="white", edgecolor="black", label="No Aplica")
+    ]
+    for b_item in PALETA_BLOQUES:
         leyenda_handles.append(
-            Patch(facecolor=color_hex, edgecolor="black", label=f"{num_bloque}")
+            Patch(facecolor=b_item["hex"], edgecolor="black", label=b_item["bloque"])
         )
 
-    # Ubicación de Etiquetas Unificadas por Campo Asignado
+    # Creación de etiquetas con negrita, decimales por punto y sombreado blanco
     campos_unificados = finca_gdf.dissolve(
         by=["CODIGO_STR"],
-        aggfunc={COL_CAMPO: "first", COL_AREA: "first"}
+        aggfunc={COL_CAMPO: "first", "AREA_HA_CALC": "first"}
     ).reset_index()
 
     for _, row in campos_unificados.iterrows():
         codigo = row["CODIGO_STR"]
-        
-        # Etiquetar principalmente los campos asignados a un bloque
+
         if codigo in lotes_en_bloques:
             punto = row.geometry.representative_point()
             nombre_campo = str(row[COL_CAMPO]) if str(row[COL_CAMPO]) not in ["nan", ""] else codigo
-            area_ha = float(row[COL_AREA]) if row[COL_AREA] is not None else 0.0
+            area_ha = float(row["AREA_HA_CALC"]) if row["AREA_HA_CALC"] is not None else 0.0
 
-            # Formato exacto de la imagen: "21,23  STA. ELI-01"
-            area_str = f"{area_ha:,.2f}".replace(".", ",")
-            etiqueta = f"{area_str}   {nombre_campo}"
+            # Formato numérico con punto decimal
+            area_str = f"{area_ha:.6f}"
+            etiqueta = f"{area_str}\n{nombre_campo}"
 
+            # Cuadro de sombreado blanco (bbox) y texto en negrita
             ax.annotate(
                 etiqueta,
                 xy=(punto.x, punto.y),
                 ha="center",
                 va="center",
-                fontsize=7,
-                fontweight="bold"
+                fontsize=8,
+                fontweight="bold",
+                linespacing=1.2,
+                bbox=dict(
+                    boxstyle="round,pad=0.2",
+                    fc="white",
+                    ec="none",
+                    alpha=0.85
+                )
             )
 
-    # Título Superior
+    # Título principal con la finca seleccionada y semana
+    titulo_completo = f"FINCA {finca_seleccionada.upper()}"
+    if num_semana.strip():
+        titulo_completo += f" {num_semana.strip().upper()}"
+
     ax.set_title(
-        f"FINCA {finca_seleccionada.upper()}",
-        fontsize=18,
+        titulo_completo,
+        fontsize=17,
         fontweight="bold",
         loc="left",
         pad=10
     )
 
-    # Rosa de los vientos (Superior derecha)
-    ax.text(0.93, 0.93, "N\nW ┼ E\nS", transform=ax.transAxes,
-            ha="center", va="center", fontsize=10, fontweight="bold",
-            bbox=dict(boxstyle="circle,pad=0.25", fc="white", ec="black", lw=1))
+    # Rosa de los vientos
+    ax.text(
+        0.93, 0.93, "N\nW ┼ E\nS", transform=ax.transAxes,
+        ha="center", va="center", fontsize=9.5, fontweight="bold",
+        bbox=dict(boxstyle="circle,pad=0.25", fc="white", ec="black", lw=1)
+    )
 
-    # Leyenda Estilo Madroñal (Inferior izquierda)
+    # Leyenda gráfica
     leg = ax.legend(
         handles=leyenda_handles,
         title="LEYENDA\n\n─── Lineas_Eléctricas\n\nBLOQUE",
-        loc="lower left",
+        loc="lower right",
         frameon=True,
         facecolor="white",
         edgecolor="black",
-        fontsize=8,
-        title_fontsize=8.5
+        fontsize=7.5,
+        title_fontsize=8
     )
-    leg.get_title().set_fontweight('bold')
+    leg.get_title().set_fontweight("bold")
 
     ax.axis("off")
 
-    # Borde Exterior rectangular completo
+    # Borde marco exterior
     fig.patches.extend([
         Rectangle((0.02, 0.02), 0.96, 0.96,
-                  fill=False, edgecolor='black', lw=1.5, transform=fig.transFigure)
+                  fill=False, edgecolor="black", lw=1.5, transform=fig.transFigure)
     ])
 
     # ============================================================
-    # CAJETÍN DE INFORMACIÓN INFERIOR (OFICIAL MONTELIMAR)
+    # ESTRUCTURA DEL CAJETÍN INFERIOR
     # ============================================================
-    ax_box = fig.add_axes([0.02, 0.02, 0.96, 0.12])
+    ax_box = fig.add_axes([0.02, 0.02, 0.96, 0.11])
     ax_box.axis("off")
 
-    # Líneas divisoras del cajetín
+    # División de celdas
     ax_box.plot([0, 1], [1, 1], color="black", lw=1.5)
     ax_box.plot([0.18, 0.18], [0, 1], color="black", lw=1)
     ax_box.plot([0.45, 0.45], [0, 1], color="black", lw=1)
@@ -300,46 +330,38 @@ if generar:
     ax_box.plot([0.45, 1.00], [0.6, 0.6], color="black", lw=1)
     ax_box.plot([0.45, 1.00], [0.4, 0.4], color="black", lw=1)
     ax_box.plot([0.45, 1.00], [0.2, 0.2], color="black", lw=1)
-    ax_box.plot([0.78, 0.78], [0, 0.8], color="black", lw=1)
+    ax_box.plot([0.75, 0.75], [0, 0.8], color="black", lw=1)
 
-    # Logo Placeholder / Texto Logo
-    ax_box.text(0.09, 0.5, "MONTELIMAR", ha="center", va="center", fontsize=10, fontweight="bold", color="#2E7D32")
-    
-    # Nombre Finca
-    ax_box.text(0.315, 0.5, f"Finca: {finca_seleccionada}", ha="center", va="center", fontsize=9, fontweight="bold")
-
-    # Encabezado Departamento
+    # Contenido del cajetín
+    ax_box.text(0.09, 0.35, "MONTELIMAR", ha="center", va="center", fontsize=9, fontweight="bold", color="#388E3C")
+    ax_box.text(0.315, 0.5, f"Finca: {finca_seleccionada}", ha="center", va="center", fontsize=8.5, fontweight="bold")
     ax_box.text(0.725, 0.9, "Departamento Producción", ha="center", va="center", fontsize=8, fontweight="bold")
 
-    # Fila 1
-    ax_box.text(0.615, 0.7, f"{tipo_plano}", ha="center", va="center", fontsize=7.5)
-    ax_box.text(0.89, 0.7, f"Zona: {zona_txt}", ha="center", va="center", fontsize=7.5)
+    # Datos automatizados y predeterminados
+    ax_box.text(0.60, 0.7, f"{tipo_plano}", ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.875, 0.7, f"Zona: {zona_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
 
-    # Fila 2
-    ax_box.text(0.615, 0.5, f"{zafra_txt}", ha="center", va="center", fontsize=7.5)
-    ax_box.text(0.89, 0.5, f"Uso: {uso_txt}", ha="center", va="center", fontsize=7.5)
+    ax_box.text(0.60, 0.5, f"{zafra_txt}", ha="center", va="center", fontsize=7.5)
+    ax_box.text(0.875, 0.5, f"Uso: {uso_txt}", ha="center", va="center", fontsize=7.5)
 
-    # Fila 3
-    ax_box.text(0.615, 0.3, f"Responsable: {responsable_txt}", ha="center", va="center", fontsize=7.5)
-    ax_box.text(0.89, 0.3, f"Area: {area_total_bloques:,.2f}".replace(".", ","), ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.60, 0.3, f"Responsable: {responsable_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.875, 0.3, f"Area: {area_total_bloques:.2f}", ha="center", va="center", fontsize=7.5, fontweight="bold")
 
-    # Fila 4
-    ax_box.text(0.615, 0.1, f"Jefe de Producción: {jefe_prod_txt}", ha="center", va="center", fontsize=7.5)
-    ax_box.text(0.89, 0.1, f"Dibujo: {dibujo_txt}", ha="center", va="center", fontsize=7.5)
+    ax_box.text(0.60, 0.1, f"Jefe de Producción: {jefe_prod_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
+    ax_box.text(0.875, 0.1, f"Dibujo: {dibujo_txt}", ha="center", va="center", fontsize=7.5, fontweight="bold")
 
-    # Mostrar Plano
     st.pyplot(fig, use_container_width=True)
 
-    # Descarga PDF
+    # Generación del archivo PDF para descarga
     pdf_buffer = io.BytesIO()
     fig.savefig(pdf_buffer, format="pdf", bbox_inches="tight", dpi=300)
     pdf_buffer.seek(0)
     plt.close(fig)
 
     st.download_button(
-        label="📥 DESCARGAR PLANO OFICIAL EN PDF",
+        label="📥 DESCARGAR PLANO PDF",
         data=pdf_buffer,
-        file_name=f"Plano_Oficial_{finca_seleccionada}.pdf",
+        file_name=f"Plano_{finca_seleccionada.replace(' ', '_')}.pdf",
         mime="application/pdf",
         use_container_width=True
     )
