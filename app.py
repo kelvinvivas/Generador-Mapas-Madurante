@@ -91,7 +91,7 @@ with col_finca:
     fincas = sorted(gdf[COL_FINCA].dropna().astype(str).unique())
     finca_seleccionada = st.selectbox("Seleccione Finca:", fincas)
 with col_semana:
-    num_semana = st.text_input("Número de Semana:", "SEMANA 03")
+    num_semana = st.text_input("Número de Semana:", "SEMANA 01")
 
 # Filtrar geodatos por la finca seleccionada
 finca_gdf = gdf[gdf[COL_FINCA].astype(str) == finca_seleccionada].copy()
@@ -207,8 +207,8 @@ generar = st.button("🗺️ GENERAR PLANO EN PDF", use_container_width=True, ty
 if generar:
     fig = plt.figure(figsize=(8.5, 11), dpi=300)
 
-    # Ventana espacial del mapa
-    ax = fig.add_axes([0.04, 0.15, 0.92, 0.79])
+    # Ventana espacial del mapa (se amplía espacio superior para el título fijo)
+    ax = fig.add_axes([0.04, 0.15, 0.92, 0.77])
 
     # Capa base en blanco (Sin_Aplicar / No Aplica)
     finca_gdf.plot(
@@ -281,17 +281,20 @@ if generar:
                 )
             )
 
-    # TÍTULO PRINCIPAL (Siempre en la esquina superior izquierda)
+    # ============================================================
+    # TÍTULO PRINCIPAL (Fijo en la parte superior izquierda de la página)
+    # ============================================================
     titulo_completo = f"FINCA {finca_seleccionada.upper()}"
     if num_semana.strip():
         titulo_completo += f" {num_semana.strip().upper()}"
 
-    ax.set_title(
+    fig.text(
+        0.04, 0.95,
         titulo_completo,
         fontsize=16,
         fontweight="bold",
-        loc="left",
-        pad=12
+        ha="left",
+        va="top"
     )
 
     # Rosa de los vientos
